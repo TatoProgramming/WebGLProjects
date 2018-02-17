@@ -1,0 +1,18 @@
+#! /bin/bash
+
+# JavaScript compile
+java -jar /usr/local/lib/antlr-4.5.1-complete.jar -Dlanguage=JavaScript BVH.g4
+
+sed -i .bak 's/matchWildcard/this.matchWildcard/' BVHParser.js
+rm BVHParser.js.bak
+
+# Java compile
+#java -jar /usr/local/lib/antlr-4.5.1-complete.jar BVH.g4
+
+# compile Java code
+#javac BVH*.java
+
+# tests
+#java org.antlr.v4.gui.TestRig BVH mocap -gui test.dat
+#java org.antlr.v4.gui.TestRig BVH mocap -gui ~/Data/bvh/cmuconvert-daz-01-09/01/01_14.bvh
+#java org.antlr.v4.gui.TestRig BVH mocap -gui ~/Data/bvh/cmuconvert-daz-01-09/09/09_12.bvh

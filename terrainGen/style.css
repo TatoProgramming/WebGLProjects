@@ -1,0 +1,33 @@
+body{
+    background: #22333b;
+}
+
+
+h1{
+    color: #eae0d5;
+    text-align: center;
+    margin: 10px;
+}
+
+.controlBox{
+    display: block;
+    float: right;
+    width: 49%;
+    background-color: #eae0d5;
+    height: 860px;
+    padding: 20px;
+    margin-left: 10px;
+    border-radius: 5px;
+}
+
+button{
+    border-radius: 5px;
+    padding: 10px;
+    background-color: #c6ac8f;
+}
+
+button:hover{
+    cursor: pointer;
+    border-color: #fff;
+}
+

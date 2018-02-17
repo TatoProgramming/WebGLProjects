@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <link href="style.css" rel="stylesheet" type="text/css"/>
+
+    <!------------------------------------------------------------>
+    <!------------------------ Terrain shaders ---------------------->
+    <!------------------------------------------------------------>
+    <script id="terrain-vshader" type="x-shader/x-vertex">
+        attribute vec4 vPosition;
+        attribute vec4 vNormal;
+        attribute vec4 vColor;
+
+        varying vec4 fColor;
+        varying vec4 fLighting;
+
+        uniform mat4 mvMatrix;
+        uniform mat4 pMatrix;
+        uniform mat4 nMatrix;
+        uniform vec3 sunlightDirection;
+        uniform vec3 sunlightIntensity;
+        uniform vec4 uColor;
+        uniform bool isWater;
+
+        void main() {
+            gl_Position = pMatrix*mvMatrix*vPosition;
+            vec3 diffuse = vec3(1.0,1.0,1.0);
+            vec3 surfaceNormal = normalize(vNormal.xyz);
+
+            vec3 ambientLight = vec3(0.2,0.2,0.2);
+            vec3 lightIntensity = diffuse*sunlightIntensity*max(dot(surfaceNormal, sunlightDirection), 0.0);
+
+            fLighting = vec4(lightIntensity+ambientLight,1.0);
+            if(isWater == true){
+                fColor = vec4(64/255, 0.5, 1.0, 0.5);
+            }else{
+                fColor = vColor;
+            }
+        }
+
+    </script>
+
+    <script id="terrain-fshader" type="x-shader/x-fragment">
+    precision mediump float;
+
+    varying vec4 fColor;
+    varying vec4 fLighting;
+
+    void main() {
+        gl_FragColor = vec4(fColor.xyz * fLighting.xyz, fColor.a);
+    }
+    </script>
+
+    <!------------------------------------------------------------>
+    <!------------------------ Line shaders ---------------------->
+    <!------------------------------------------------------------>
+    <script id="line-vshader" type="x-shader/x-vertex">
+
+    attribute vec4 vPosition;
+    attribute vec4 vColor;
+    varying vec4 fColor;
+
+    uniform mat4 mvMatrix;
+    uniform mat4 pMatrix;
+
+    void main() {
+      gl_PointSize = 1.0;
+      gl_Position = pMatrix*mvMatrix*vPosition;
+      fColor = vColor;
+    }
+
+    </script>
+
+    <script id="line-fshader" type="x-shader/x-fragment">
+
+    #ifdef GL_ES
+    precision highp float;
+    #endif
+
+    varying vec4 fColor;
+
+    void main() {
+      gl_FragColor = fColor;
+    }
+
+    </script>
+
+    <!------------------------------------------------------------>
+    <!------------------------ CubeMap shaders ---------------------->
+    <!------------------------------------------------------------>
+    <script id="cube-vshader" type="x-shader/x-vertex">
+    attribute vec4 vPosition;
+    attribute vec4 vColor;
+    varying vec4 fColor;
+    varying vec3 fPosition;
+
+    uniform mat4 mvMatrix;
+    uniform mat4 pMatrix;
+
+    void main() {
+      gl_PointSize = 1.0;
+      gl_Position = pMatrix*mvMatrix*vPosition;
+      fPosition = vPosition.xyz;
+      fColor = vColor;
+    }
+
+    </script>
+
+    <script id="cube-fshader" type="x-shader/x-fragment">
+    #ifdef GL_ES
+    precision highp float;
+    #endif
+
+    varying vec3 fPosition;
+    varying vec4 fColor;
+    uniform samplerCube texMap;
+
+    void main() {
+        vec4 texColor = textureCube(texMap, fPosition);
+      gl_FragColor = texColor;
+    }
+
+    </script>
+
+    <script type="text/javascript" src="./common/webgl-utils.js"></script>
+    <script type="text/javascript" src="./common/initShaders.js"></script>
+    <script type="text/javascript" src="./common/MV.js"></script>
+    <script type="text/javascript" src="perlin.js"></script>
+    <script type="text/javascript" src="textureMapping.js"></script>
+    <script type="text/javascript" src="cube.js"></script>
+    <script type="text/javascript" src="water.js"></script>
+    <script type="text/javascript" src="axis.js"></script>
+    <script type="text/javascript" src="terrainGenerator.js"></script>
+
+</head>
+
+<body>
+<h1>Polygon Terrain Generator</h1>
+<canvas id="gl-canvas" width="900" height="900">
+    Oops ... your browser doesn't support the HTML5 canvas element
+</canvas>
+
+<div class="controlBox">
+    <p>Seed: used to procedural generate terrain.</p>
+    <label for="seed">Seed</label>
+    <input type="text" id="seed"/>
+    <label for="random">Use Random Number</label>
+    <input id="random" type="checkbox" checked="true" onclick="">
+    <br>
+    <p>The amount to step in the x-z axis.</p>
+    <label for="inc">X-Z step</label>
+    <input type="number" id="inc" min="0.03" max="0.1" step="0.01"/>
+    <br>
+    <p>Offset will make it look more like random polygons and less like squares/triangles</p>
+    <label for="offset">Offset</label>
+    <input type="number" id="offset" min="0" max="0.02" step="0.01"/>
+    <br>
+    <p>noise value = noise(x,z) + coeff1 * noise(2 * x, 2 * z) + coeff2 * noise(4 * x, 4 * z)</p>
+    <label for="coeff1">Coeff</label>
+    <input type="number" id="coeff1" min="0" max="1" step="0.05"/>
+    <label for="coeff2">Coeff</label>
+    <input type="number" id="coeff2" min="0" max="1" step="0.05"/>
+    <br>
+    <p> y = pow(noise value, power)</p>
+    <label for="power">Power</label>
+    <input type="number" id="power" min="1" max="10" step="1"/>
+    <br>
+    <br>
+    <button onclick="updateTerrain()">Generate</button>
+    <button onclick="toggleSkybox(this)">Turn off Sky Box</button>
+
+</div>
+
+
+</body>
+</html>

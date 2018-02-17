@@ -1,0 +1,7 @@
+//------------------------------------------------------------
+// To prep a test file:
+//   cat [file] | sed 's/^M//' | sed 's/$/ \\/' > test1.bvh.js
+// where ^M is obtained by typing ctrl+v ctrl+m
+//
+// Then add var testData1 = "
+//------------------------------------------------------------

@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html>
+<style type="text/css">
+    body {
+        background: black;
+        margin: auto;
+        width: 50%;
+    }
+</style>
+
+<script id="vshader" type="x-shader/x-vertex">
+    attribute  vec4 vPosition;
+    //attribute  vec4 vColor;
+    //attribute  vec2 vTexCoord;
+
+    varying vec4 fPosition;
+    varying vec2 fTexCoord;
+
+    uniform mat4 pMatrix;
+    uniform mat4 mvMatrix;
+    //uniform mat4 nMatrix;
+
+    void main(){
+//        gl_Position = pMatrix * mvMatrix * vPosition;
+        gl_Position = vPosition;
+    }
+
+
+
+</script>
+
+<script id="fshader" type="x-shader/x-fragment">
+    precision highp float;
+    #define OBJ_COUNT 9
+    #define MAX_FLOAT -10000.0
+    #define BOUNCES 3
+
+    struct Plane{
+        vec3 surface;
+        vec3 q;
+        vec3 n;
+        vec3 Ka;
+        vec3 Kd;
+        vec3 Ks;
+    };
+
+    struct Sphere{
+        vec3 center;
+        float radius;
+        vec3 surface;
+        vec3 Ks;
+        vec3 Kd;
+        vec3 Ka;
+    };
+
+    struct Obj{
+        Sphere sphere;
+        Plane plane;
+        bool isHit;
+        bool isPlane;
+        bool isBackground;
+    };
+
+    struct Ray{
+        vec4 origin;
+        vec3 direction;
+    };
+
+    vec3 La = vec3(0.4, 0.2, 0.3);
+    vec3 Ld = vec3(1.0, 1.0, 1.0);
+    vec3 Ls = vec3(1.0, 1.0, 1.0);
+
+    varying vec2 fTexCoord;
+
+    uniform sampler2D texture;
+    uniform float time;
+    uniform vec2 resolution;
+    Obj objs[OBJ_COUNT];
+
+    vec3 pointOnSurface(Ray ray, float intersection){
+        return ray.origin.xyz + (intersection * ray.direction);
+    }
+
+    float planeIntersect(Ray ray, inout Obj obj, vec3 q){
+        float top = dot(ray.origin.xyz - q, obj.plane.n);
+        float bottom = dot(ray.direction, obj.plane.n);
+        float t = -top/bottom;
+        if(t < 0.0){
+            obj.isHit = false;
+        }else{
+            obj.isHit = true;
+        }
+        if(bottom==0.0){
+            obj.isHit = false;
+        }
+        return t;
+    }
+
+    float sphereIntersect(Ray ray, inout Obj obj){
+        vec3 rc = obj.sphere.center - ray.origin.xyz;
+        float dotP = dot(rc, ray.direction);
+        if(dotP <= 0.0){
+            obj.isHit = false;
+            return -1.0;
+        }
+
+        float d = (dot(rc,rc) - (dotP*dotP));
+        float r2 = obj.sphere.radius*obj.sphere.radius;
+        if(d > r2){
+            obj.isHit = false;
+            return -1.0;
+        }
+
+        float rhs = sqrt(r2 - d);
+        float t0 = dotP - rhs;
+        float t1 = dotP + rhs;
+
+        float t;
+        if(t0 < 0.0){
+            t = t1;
+        }else if (t1 < 0.0){
+            t = t0;
+        }else{
+            t = min(t0,t1);
+        }
+
+        obj.isHit = true;
+        return t;
+    }
+
+    bool findShadeIntersect(int previousIndex, vec3 pos, vec3 lightPos, vec3 planePoint){
+        Ray newRay;
+        newRay.origin = vec4(pos,1.0);
+        newRay.direction = normalize(lightPos - pos.xyz);
+        float minT = 100000.0;
+        float minD = 100000.0;
+        for(int j = 0; j < OBJ_COUNT; j++){
+            float t = -1.0;
+            if(previousIndex != j){
+                float d = 0.0;
+                if(objs[j].isPlane){
+                    t = planeIntersect(newRay, objs[j], planePoint);
+                    d = distance(newRay.origin.xyz, pointOnSurface(newRay, t));
+                }else{
+                    t = sphereIntersect(newRay, objs[j]);
+                    d = distance(newRay.origin.xyz, pointOnSurface(newRay, t));
+                }
+
+                if(objs[j].isHit == true && t >= 0.0 && t < 10000.0){
+                    if(d < minD){
+                        minT = t;
+                        minD = d;
+                    }
+                }
+            }
+        }
+        return minT < 10000.0 && minT > 0.0;
+    }
+
+    float findIntersect(out int index, out Obj currentObj, Ray ray, int previousIndex, vec3 planePoint){
+        float minT = 100000.0;
+        float minD = 100000.0;
+        for(int j = 0; j < OBJ_COUNT; j++){
+            float t = -1.0;
+            if(previousIndex != j){
+                float d = 0.0;
+                if(objs[j].isPlane){
+                    t = planeIntersect(ray, objs[j], planePoint);
+                    d = distance(ray.origin.xyz, pointOnSurface(ray, t));
+                }else{
+                    t = sphereIntersect(ray, objs[j]);
+                    d = distance(ray.origin.xyz, pointOnSurface(ray, t));
+                }
+
+                if(objs[j].isHit == true && t >= 0.0 && t < 10000.0){
+                    if(d < minD){
+                        minT = t;
+                        minD = d;
+                        index = j;
+                        currentObj.isPlane = objs[j].isPlane;
+                        currentObj.isBackground = false;
+                        currentObj.isHit = true;
+                        currentObj.sphere = objs[j].sphere;
+                        currentObj.plane = objs[j].plane;
+                    }
+                }
+            }
+
+        }
+        return minT;
+    }
+
+    vec3 diffuse(vec3 Kd, vec3 n, vec3 l){
+        return Kd*Ld*max(dot(n,l), 0.0);
+    }
+
+    vec3 specular(vec3 Ks, vec3 n, vec3 l, vec3 v, float shinyness){
+        vec3 r = reflect(-l, n);
+        return Ks*Ls*pow(max(dot(r,v), 0.0), shinyness);
+    }
+
+    vec3 phongSphere(Sphere sphere, vec3 lightPos, Ray ray, vec3 surface){
+        vec3 n = normalize(surface - sphere.center);
+        vec3 l = normalize(lightPos - sphere.center); // this seems wrong
+        vec3 v = normalize(ray.origin.xyz - surface);
+        vec3 Ia = sphere.Ka*La;
+        vec3 Id = diffuse(sphere.Kd, n, l);
+        vec3 Is = specular(sphere.Ks, n, l, v, 100.0);
+
+        return Ia + Id + Is;
+    }
+
+    vec3 phongPlane(Plane plane, vec3 lightPos, Ray ray, vec3 surface){
+        vec3 l = normalize(lightPos - surface);
+        vec3 v = normalize(ray.origin.xyz - surface);
+        vec3 Ia = plane.Ka*La;
+        vec3 Id = diffuse(plane.Kd, plane.n, l);
+        vec3 Is = specular(plane.Ks, plane.n, l, v, 100.0);
+
+        return Ia + Id + Is;
+    }
+
+
+    void main() {
+
+        vec3 planePoint = vec3(0.0, -1.0, 0.0);
+
+        vec2 xy = gl_FragCoord.xy/resolution.xy;
+        xy = xy*2.0 - 1.0;
+        vec3 pixel =  vec3(0.0, 0.0, 0.0);
+
+        // TODO - make a combined function for lighting with specular.
+        // TODo - increase the quality of the reflection model
+        // Todo - make the spheres mantain the materials for lighting
+        // Todo - render a plane
+        vec4 ambIns = vec4(0.2, 0.2, 0.2, 1.0);
+        vec4 diffuseLight = vec4(0.5, 0.5, 0.5, 1.0);
+        vec4 specularLight = vec4(1.0, 1.0, 1.0, 1.0);
+        vec3 lightPos = vec3(sin(time/5.0)*10.0, 10.0, 1.0);
+
+        float yOffset = 1.8;
+        float xOffset = 1.0;
+        Ray ray;
+        ray.origin = vec4(0.0, 2.0, 6.0, 1.0);
+        ray.direction = normalize(vec3(xy, -1.0));
+
+        Sphere lightSphere;
+        lightSphere.center = lightPos;
+        lightSphere.radius = 0.1;
+
+        Sphere blueSphere;
+        blueSphere.center = vec3(0.0,yOffset,-1.5);
+        blueSphere.radius = 1.0;
+        blueSphere.Ka = vec3(0.2,0.2,0.2);
+        blueSphere.Kd = vec3(0.1,0.1,1.0);
+        blueSphere.Ks = vec3(1.0,1.0,1.0);
+
+        Sphere redSphere;
+//        redSphere.center = vec3(cos(time)*2.0, sin(time)*2.0 + yOffset, sin(time)-5.0);
+        redSphere.center = vec3(cos(time)*2.0, sin(time)*2.0 + yOffset, sin(time)-1.5);
+        redSphere.radius = 0.4;
+        redSphere.Ka = vec3(0.2,0.2,0.2);
+        redSphere.Kd = vec3(0.5,0.1,0.1);
+        redSphere.Ks = vec3(1.0,1.0,1.0);
+
+        Sphere greenSphere;
+        greenSphere.center = vec3(cos(time)*2.0 - sin(time)*2.0, -sin(time)*2.0 + yOffset, -cos(time)-1.5);
+        greenSphere.radius = 0.3;
+        greenSphere.Ka = vec3(0.2,0.2,0.2);
+        greenSphere.Kd = vec3(0.8,0.5,0.8);
+        greenSphere.Ks = vec3(1.0,1.0,1.0);
+
+        Sphere s3;
+        s3.center = vec3(0.0, sin(time)*2.0 + yOffset, cos(time)-1.5);
+        s3.radius = 0.5;
+        s3.Ka = vec3(0.2,0.2,0.2);
+        s3.Kd = vec3(0.5,0.8,0.8);
+        s3.Ks = vec3(1.0,1.0,1.0);
+
+
+        Sphere s4;
+        s4.center = vec3(-sin(time)*2.0, yOffset, -cos(time)-1.5);
+        s4.radius = 0.6;
+        s4.Ka = vec3(0.2,0.2,0.2);
+        s4.Kd = vec3(0.8,0.8,0.5);
+        s4.Ks = vec3(1.0,1.0,1.0);
+
+        Sphere s5;
+        s5.center = vec3(-5.0, 5.0, -5.0);
+        s5.radius = 4.0;
+        s5.Ka = vec3(0.1,0.1,0.1);
+        s5.Kd = vec3(0.0,0.0,0.0);
+        s5.Ks = vec3(1.0,1.0,1.0);
+
+        Sphere s6;
+        s6.center = vec3(5.0, 5.0, -5.0);
+        s6.radius = 4.0;
+        s6.Ka = vec3(0.1,0.1,0.1);
+        s6.Kd = vec3(0.0,0.0,0.0);
+        s6.Ks = vec3(1.0,1.0,1.0);
+
+        // ------ plane ------
+        Plane plane;
+        plane.q = planePoint;
+        plane.n = vec3(0.0, 1.0, 0.0);
+        plane.Ka = vec3(0.2, 0.2, 0.2);
+        plane.Kd = vec3(0.3, 0.3, 0.3);
+        plane.Ks = vec3(0.3, 0.3, 0.3);
+
+
+        Sphere s7;
+        s7.center = vec3(0.0, 5.0+sin(time/2.0)*4.0, 7.5);
+        s7.radius = 2.0;
+        s7.Ka = vec3(0.1,0.1,0.1);
+        s7.Kd = vec3(0.8,140.0/255.0,0.0);
+        s7.Ks = vec3(1.0,1.0,1.0);
+
+        objs[0].isPlane = true; objs[0].plane = plane;
+        objs[1].isPlane = false; objs[1].sphere = blueSphere;
+        objs[2].isPlane = false; objs[2].sphere = redSphere;
+        objs[3].isPlane = false; objs[3].sphere = greenSphere;
+        objs[4].isPlane = false; objs[4].sphere = s4;
+        objs[5].isPlane = false; objs[5].sphere = s3;
+        objs[6].isPlane = false; objs[6].sphere = s5;
+        objs[7].isPlane = false; objs[7].sphere = s6;
+        objs[8].isPlane = false; objs[8].sphere = s7;
+
+        float planeIntersection = planeIntersect(ray, objs[0], planePoint);
+        objs[0].plane.surface = pointOnSurface(ray, planeIntersection);
+
+        //TODO shadows.
+        Obj currentObj;
+        int previousIndex = -1;
+        currentObj.isBackground = true;
+        currentObj.isHit = false;
+        float weaken = 1.0;
+        vec3 local = vec3(0.0,0.0,0.0);
+        for(int i = 0; i < 5; i++){
+            int index = -1;
+            float minT = findIntersect(index, currentObj, ray, previousIndex, planePoint);
+
+            previousIndex = index;
+
+            if(currentObj.isHit == true && minT >= 0.0 && minT < 10000.0){
+                if(currentObj.isPlane){
+                    currentObj.plane.surface = pointOnSurface(ray, minT);
+                    float modX = mod(currentObj.plane.surface.x, 1.6);
+                    float modZ = mod(currentObj.plane.surface.z, 1.6);
+                    if(modX >= 0.8 && modZ >= 0.8 || modX < 0.8 && modZ < 0.8){
+                        currentObj.plane.Kd = currentObj.plane.Ks = vec3(0.0, 0.0, 0.0);
+                    }
+                    local += phongPlane(currentObj.plane, lightPos, ray, pointOnSurface(ray, minT));
+                    if(findShadeIntersect(previousIndex, currentObj.plane.surface, lightPos, planePoint)){
+                        local = mix(local, vec3(0.0,0.0,0.0), 0.4);
+                    }
+
+                    ray.origin = vec4(pointOnSurface(ray, minT), 1.0);
+                    ray.direction = normalize(reflect(ray.direction, normalize(currentObj.plane.n)));
+                }else{
+                    local += phongSphere(currentObj.sphere, lightPos, ray, pointOnSurface(ray, minT));
+
+                    vec3 pos = pointOnSurface(ray, minT);
+                    if(findShadeIntersect(previousIndex,pos, lightPos, planePoint)){
+                        local = mix(local, vec3(0.0,0.0,0.0), 0.4);
+                    }
+
+                    ray.origin = vec4(pointOnSurface(ray, minT), 1.0);
+                    ray.direction = normalize(reflect(ray.direction, normalize(pos - currentObj.sphere.center)));
+                }
+            }else{
+                break;
+            }
+//            weaken *= 1.0;
+//            weaken += 0.5;
+
+        }
+
+        gl_FragColor = vec4(local.xyz, 1.0);
+    }
+
+
+</script>
+
+<script type="text/javascript" src="./common/webgl-utils.js"></script>
+<script type="text/javascript" src="./common/initShaders.js"></script>
+<script type="text/javascript" src="./common/MV.js"></script>
+<script type="text/javascript" src="ray.js"></script>
+<script type="text/javascript" src="raytrace.js"></script>
+
+<body>
+<canvas id="gl-canvas" width="900" height="900">
+    Oops ... your browser doesn't support the HTML5 canvas element
+</canvas>
+<br>
+</body>
+</html>

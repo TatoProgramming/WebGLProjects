@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Serpinski Carpet</title>
+
+    <!--<link rel="stylesheet" href="css/code.css"/>-->
+
+    <!-------------------- Shaders ------------------------->
+    <script id="vertex-shader" type="x-shader/x-vertex">
+      attribute vec4 vPosition;
+      //attribute vec4 vVertexColor;
+      //varying vec4 vColor;
+
+      void main() {
+        gl_PointSize = 3.0;
+        gl_Position = vPosition;
+        //vColor = vVertexColor;
+      }
+    </script>
+
+    <script id="fragment-shader" type="x-shader/x-fragment">
+      precision mediump float;
+      //varying vec4 vColor;
+
+      void main() {
+           //gl_FragColor = vColor;
+           gl_FragColor = vec4(0.5,0.5,0.5,1.0);
+      }
+    </script>
+
+    <script type="text/javascript" src="../Common/webgl-utils.js"></script>
+    <script type="text/javascript" src="../Common/initShaders.js"></script>
+    <script type="text/javascript" src="../Common/MV.js"></script>
+    <script type="text/javascript" src="../Common/util.js"></script>
+    <script type="text/javascript" src="js/code.js"></script>
+</head>
+<body>
+<canvas id="gl-canvas" width="950" height="950">
+    Your browser does not support webGL... LAME! :'(
+</canvas>
+<label for="seletor">Select Iteration Count</label>
+<select id="seletor" onchange="selectionChange(this)">
+    <option value="0">1</option>
+    <option value="1">2</option>
+    <option value="2">3</option>
+    <option value="3">4</option>
+    <option value="4">5</option>
+    <option value="5">6</option>
+</select>
+<button onclick="test()">Triangles</button>
+</body>
+</html>
